@@ -11,20 +11,18 @@ class DashboardController extends Controller
 {
     public function index()
     {
-       $categories = DB::table('categories')
+        $categories = DB::table('categories')
             ->select('id', 'name')
             ->get();
 
         // Example assumes these columns exist on tickets table:
         // tickets.category_id, tickets.sub_category_id, tickets.solved_by, tickets.assigned_to
         // and that users table has name
-        $tickets = DB::table('tickets as t')
+        $query = DB::table('tickets as t')
             ->leftJoin('categories as c', 't.category_id', '=', 'c.id')
             ->leftJoin('sub_categories as sc', 't.sub_category_id', '=', 'sc.id')
             ->leftJoin('users as s', 't.solved_by', '=', 's.id')
             ->leftJoin('users as a', 't.assigned_to', '=', 'a.id')
-            // if "My Tickets", you probably want only tickets created by logged-in user:
-            // ->where('t.created_by', auth()->id())
             ->select(
                 't.*',
                 'c.name as category_name',
@@ -32,8 +30,23 @@ class DashboardController extends Controller
                 's.name as solved_by_name',
                 'a.name as assigned_to_name'
             )
-            ->latest('t.created_at')
-            ->get();
+            ->latest('t.created_at');
+
+        $role = auth()->user()->role;
+
+        // Branch users (role 3): only tickets for their branch
+        if ($role == 3) {
+            $query->where('t.user_id', auth()->user()->branch_id);
+        }
+
+        // Engineers (role 2): only tickets assigned to them
+        if ($role == 2) {
+            $query->where('t.assigned_to', auth()->id());
+        }
+
+        // Admins (role 1): see all tickets (no extra filter)
+
+        $tickets = $query->get();
 
         $subCategories = DB::table('sub_categories')->get();
 
@@ -132,5 +145,5 @@ class DashboardController extends Controller
             'hours',
             'hourCounts'
         ));
-     }
+    }
 }

@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+
 <head>
     <style>
         #statusPieChart {
@@ -8,25 +9,31 @@
             height: 220px !important;
             max-width: 100%;
         }
+
         .card-style {
-        position: relative;
-        overflow: hidden;
-        color: #2c2c2cff;
-        background: transparent; /* remove your opacity + gray background */
+            position: relative;
+            overflow: hidden;
+            color: #2c2c2cff;
+            background: transparent;
+            /* remove your opacity + gray background */
         }
 
         .card-style::before {
             content: "";
             position: absolute;
-            inset: 0;             /* cover full card */
-            background: #ddd;     /* your background color */
-            opacity: 0.3;         /* transparency only for background */
+            inset: 0;
+            /* cover full card */
+            background: #ddd;
+            /* your background color */
+            opacity: 0.3;
+            /* transparency only for background */
             z-index: 1;
         }
 
         .card-style .card-body {
             position: relative;
-            z-index: 5; /* ensures text stays CLEAR above background */
+            z-index: 5;
+            /* ensures text stays CLEAR above background */
         }
     </style>
 </head>
@@ -147,17 +154,17 @@
                             </thead>
                             <tbody>
                                 @forelse($topIssuers as $index => $issuer)
-                                    <tr>
-                                        <td>{{ $index + 1 }}</td>
-                                        <td>{{ $issuer->branch_name ?? 'Unknown' }}</td>
-                                        <td class="text-end">{{ $issuer->total_tickets }}</td>
-                                    </tr>
+                                <tr>
+                                    <td>{{ $index + 1 }}</td>
+                                    <td>{{ $issuer->branch_name ?? 'Unknown' }}</td>
+                                    <td class="text-end">{{ $issuer->total_tickets }}</td>
+                                </tr>
                                 @empty
-                                    <tr>
-                                        <td colspan="3" class="text-center text-muted py-3">
-                                            No data available.
-                                        </td>
-                                    </tr>
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-3">
+                                        No data available.
+                                    </td>
+                                </tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -171,53 +178,55 @@
 {{-- Chart.js --}}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    // Data from controller
-    const statusLabels = @json($statusLabels);
-    const statusCounts = @json($statusCountsToday);
-    const hoursLabels  = @json($hours);
-    const hoursCounts  = @json($hourCounts);
+    document.addEventListener('DOMContentLoaded', function() {
+        // Data from controller
+        const statusLabels = @json($statusLabels);
+        const statusCounts = @json($statusCountsToday);
+        const hoursLabels = @json($hours);
+        const hoursCounts = @json($hourCounts);
 
-    // Status Pie Chart
-    const ctxPie = document.getElementById('statusPieChart').getContext('2d');
-    new Chart(ctxPie, {
-        type: 'pie',
-        data: {
-            labels: statusLabels,
-            datasets: [{
-                data: statusCounts,
-                backgroundColor: ['#ffc107', '#0dcaf0', '#198754'],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            plugins: {
-                legend: { position: 'bottom' }
-            }
-        }
-    });
-
-    // Tickets per hour (bar chart)
-    const ctxBar = document.getElementById('ticketsHourChart').getContext('2d');
-    new Chart(ctxBar, {
-        type: 'bar',
-        data: {
-            labels: hoursLabels,
-            datasets: [{
-                label: 'Tickets',
-                data: hoursCounts,
-                backgroundColor: '#0d6efd'
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    precision: 0
+        // Status Pie Chart
+        const ctxPie = document.getElementById('statusPieChart').getContext('2d');
+        new Chart(ctxPie, {
+            type: 'pie',
+            data: {
+                labels: statusLabels,
+                datasets: [{
+                    data: statusCounts,
+                    backgroundColor: ['#ffc107', '#0dcaf0', '#198754'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
                 }
             }
-        }
+        });
+
+        // Tickets per hour (bar chart)
+        const ctxBar = document.getElementById('ticketsHourChart').getContext('2d');
+        new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: hoursLabels,
+                datasets: [{
+                    label: 'Tickets',
+                    data: hoursCounts,
+                    backgroundColor: '#0d6efd'
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        precision: 0
+                    }
+                }
+            }
+        });
     });
-});
 </script>
 @endsection

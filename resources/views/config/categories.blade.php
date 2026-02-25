@@ -1,84 +1,65 @@
 @extends('layouts.app')
 
 @section('content')
-    <h2 class="mb-4">Category Management</h2>
+<h2 class="mb-4">Manage Categories</h2>
 
-    <!-- Add Category Form -->
-    <div class="card p-3 mb-4">
-        <form action="{{ route('categories.store') }}" method="POST">
-            @csrf
-            <div class="row mb-3">
-                <div class="col">
-                    <input type="text" name="category_name" class="form-control" placeholder="Category Name" required>
-                </div>
-                <div class="col">
-                    <select name="status" class="form-control">
-                        <option value="1">Active</option>
-                        <option value="0">Inactive</option>
-                    </select>
-                </div>
-                <div class="col">
-                    <button type="submit" class="btn btn-primary">Add Category</button>
-                </div>
+@if(session('success'))
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{ session('success') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
+
+<!-- Add category (above current categories) -->
+<div class="card p-3 mb-4">
+    <form action="{{ route('categories.store') }}" method="POST">
+        @csrf
+        <div class="row align-items-end">
+            <div class="col">
+                <input type="text" name="category_name" class="form-control" placeholder="Add new category" required>
             </div>
-        </form>
-    </div>
-
-    <!-- Category List -->
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Category Name</th>
-                <th>Status</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($categories as $category)
-                <tr>
-                    <td>{{ $category->category_id }}</td>
-                    <td>{{ $category->category_name }}</td>
-                    <td>
-                        @if($category->status == 1)
-                            <span class="badge bg-success">Active</span>
-                        @else
-                            <span class="badge bg-danger">Inactive</span>
-                        @endif
-                    </td>
-                    <td>
-                        <!-- Edit Form -->
-                        <form action="{{ route('categories.update', $category->category_id) }}" method="POST" class="d-inline">
-                            @csrf
-                            <input type="hidden" name="category_name" value="{{ $category->category_name }}"> 
-                            <button type="submit" class="btn btn-warning btn-sm">Edit</button>
-                        </form>
-
-                        <!-- Delete Link -->
-                        <a href="{{ route('categories.destroy', $category->category_id) }}" 
-                           class="btn btn-danger btn-sm"
-                           onclick="return confirm('Are you sure?')">Delete</a>
-                    </td>
-                </tr>
-            @empty
-                <tr>
-                    <td colspan="4" class="text-center">No categories found.</td>
-                </tr>
-            @endforelse
-        </tbody>
-    </table>
-    <div class="mb-3">
-        <label for="assign_role_ids" class="form-label">Engineer role_ids for this category</label>
-        <input type="text"
-            name="assign_role_ids"
-            id="assign_role_ids"
-            class="form-control form-control-sm"
-            value="{{ old('assign_role_ids', $category->assign_role_ids ?? '') }}"
-            placeholder="e.g. 1,2 for Software + Hardware">
-            <small class="text-muted">
-                Comma-separated role_id values. All engineers with these role_ids will be auto-assigned.
-            </small>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Add Category</button>
+            </div>
         </div>
-</body>
-</html>
+    </form>
+</div>
+
+<!-- Current categories -->
+<div class="card">
+    <div class="card-header bg-white">
+        <h6 class="mb-0">Current categories</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Category name</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse($categories as $category)
+                    <tr>
+                        <td>{{ $category->id }}</td>
+                        <td>{{ $category->name }}</td>
+                        <td class="text-end">
+                            <a href="{{ route('categories.edit', $category->id) }}" class="btn btn-warning btn-sm me-1">Edit</a>
+                            <a href="{{ route('categories.destroy', $category->id) }}"
+                                class="btn btn-danger btn-sm"
+                                onclick="return confirm('Delete this category?')">Delete</a>
+                        </td>
+                    </tr>
+                    @empty
+                    <tr>
+                        <td colspan="3" class="text-center text-muted py-4">No categories yet. Add one above.</td>
+                    </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
 @endsection
