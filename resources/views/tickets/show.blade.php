@@ -51,16 +51,24 @@
                     </a>
                 </div>
             @endif
-            {{-- shows multiple engineers --}}
-            @if(isset($assignedEngineers) && $assignedEngineers->isNotEmpty())
-                <p class="mb-0">
-                    <strong>Assigned Engineers:</strong>
-                    {{ $assignedEngineers->pluck('name')->join(', ') }}
-                </p>
-            @else
-                <p class="mb-0">
-                    <strong>Assigned Engineers:</strong> <span class="text-muted">Unassigned</span>
-                </p>
+            {{-- show only current assigned engineer --}}
+            <p class="mb-0">
+                <strong>Assigned Engineer:</strong>
+                @if(!empty($ticket->assigned_to))
+                    {{ $ticket->assigned_to_name ?? 'Unknown' }}
+                @else
+                    <span class="text-muted">Unassigned</span>
+                @endif
+            </p>
+
+            {{-- Forward to next engineer (admin or current engineer only) --}}
+            @if($nextEngineer && (auth()->user()->role === 1 || (auth()->user()->role === 2 && auth()->id() === $ticket->assigned_to)))
+                <form method="POST" action="{{ route('tickets.forward', $ticket->id) }}" class="mt-2">
+                    @csrf
+                    <button type="submit" class="btn btn-success btn-sm">
+                        Forward to Next Engineer ({{ $nextEngineer->name }})
+                    </button>
+                </form>
             @endif
 
             {{-- Status Section --}}

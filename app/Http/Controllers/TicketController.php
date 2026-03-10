@@ -97,9 +97,10 @@ class TicketController extends Controller
             }
 
             // ✅ ALWAYS define these so both admin & branch paths can use them
-            $assignedTo  = null;
-            $engineerIds = [];
-            $ticketId    = null;
+            $assignedTo        = null;
+            $assignedHierarchy = null;
+            $engineerIds       = [];
+            $ticketId          = null;
 
             // ✅ Determine which branch_id will be stored in tickets.user_id
             if (auth()->user()->role === 1) {
@@ -116,24 +117,39 @@ class TicketController extends Controller
                 $branchId = auth()->user()->branch_id;
             }
 
-            // ✅ AUTO-ASSIGN ENGINEERS (by role_id: category.assign_role_ids ↔ user.role_id)
+            // ✅ AUTO-ASSIGN ENGINEERS
             if ($request->category_id) {
                 $categoryId = (int) $request->category_id;
-                $assignRoleIdsString = DB::table('categories')
-                    ->where('id', $categoryId)
-                    ->value('assign_role_ids');
-                if (!empty($assignRoleIdsString)) {
-                    $roleIds = array_filter(array_map('trim', explode(',', $assignRoleIdsString)));
-                    if (!empty($roleIds)) {
-                        // role 2 = Engineer, role 1 = Admin
-                        // Both can be auto-assigned if their role_id matches assign_role_ids
-                        $engineers = DB::table('users')
-                            ->whereIn('role', [1, 2])
-                            ->whereIn('role_id', $roleIds)
-                            ->get();
-                        if ($engineers->isNotEmpty()) {
-                            $assignedTo  = $engineers->first()->id;
-                            $engineerIds = $engineers->pluck('id')->all();
+
+                // 1) Try Extra Engineer Mapping hierarchy first
+                $hierarchyRows = DB::table('category_engineer_hierarchy')
+                    ->where('category_id', $categoryId)
+                    ->orderBy('hierarchy')
+                    ->get();
+
+                if ($hierarchyRows->isNotEmpty()) {
+                    $first          = $hierarchyRows->first();
+                    $assignedTo     = $first->user_id;
+                    $assignedHierarchy = (int) $first->hierarchy;
+                    $engineerIds    = $hierarchyRows->pluck('user_id')->all();
+                } else {
+                    // 2) Fallback to old assign_role_ids logic
+                    $assignRoleIdsString = DB::table('categories')
+                        ->where('id', $categoryId)
+                        ->value('assign_role_ids');
+                    if (!empty($assignRoleIdsString)) {
+                        $roleIds = array_filter(array_map('trim', explode(',', $assignRoleIdsString)));
+                        if (!empty($roleIds)) {
+                            // role 2 = Engineer, role 1 = Admin
+                            // Both can be auto-assigned if their role_id matches assign_role_ids
+                            $engineers = DB::table('users')
+                                ->whereIn('role', [1, 2])
+                                ->whereIn('role_id', $roleIds)
+                                ->get();
+                            if ($engineers->isNotEmpty()) {
+                                $assignedTo  = $engineers->first()->id;
+                                $engineerIds = $engineers->pluck('id')->all();
+                            }
                         }
                     }
                 }
@@ -150,6 +166,7 @@ class TicketController extends Controller
                 'category_id'     => $request->category_id,
                 'sub_category_id' => $request->sub_category_id,
                 'assigned_to'     => $assignedTo,   // can be null
+                'assigned_hierarchy' => $assignedHierarchy,
                 'status'          => 0,
                 'created_at'      => now(),
                 'updated_at'      => now(),
@@ -198,6 +215,18 @@ class TicketController extends Controller
             abort(404);
         }
 
+        // Next engineer in hierarchy (if any)
+        $nextEngineer = null;
+        if (!empty($ticket->category_id) && !empty($ticket->assigned_hierarchy)) {
+            $nextEngineer = DB::table('category_engineer_hierarchy as ceh')
+                ->join('users as u', 'ceh.user_id', '=', 'u.id')
+                ->where('ceh.category_id', $ticket->category_id)
+                ->where('ceh.hierarchy', '>', $ticket->assigned_hierarchy)
+                ->orderBy('ceh.hierarchy')
+                ->select('u.id', 'u.name', 'ceh.hierarchy')
+                ->first();
+        }
+
         // Replies
         $replies = DB::table('ticket_replies')
             ->join('users', 'ticket_replies.user_id', '=', 'users.id')
@@ -233,7 +262,7 @@ class TicketController extends Controller
         $solvedAt     = $ticket->status == 2 ? \Carbon\Carbon::parse($ticket->updated_at) : null;
 
 
-        return view('tickets.show', compact('ticket', 'replies', 'engineers', 'pendingAt', 'processingAt', 'solvedAt', 'assignedEngineers'));
+        return view('tickets.show', compact('ticket', 'replies', 'engineers', 'pendingAt', 'processingAt', 'solvedAt', 'assignedEngineers', 'nextEngineer'));
     }
 
     public function storeReply(Request $request, $id)
@@ -360,5 +389,62 @@ class TicketController extends Controller
         return redirect()
             ->route('tickets.show', $id)
             ->with('success', 'Ticket assigned to Engineer successfully.');
+    }
+
+    public function forwardToNextEngineer(Request $request, $id)
+    {
+        // Only Admin or currently assigned engineer can forward
+        $user = auth()->user();
+        if (!in_array($user->role, [1, 2])) {
+            abort(403, 'Unauthorized');
+        }
+
+        $ticket = DB::table('tickets')->where('id', $id)->first();
+        if (!$ticket) {
+            abort(404);
+        }
+
+        if ($user->role == 2 && (int)$ticket->assigned_to !== (int)$user->id) {
+            abort(403, 'You are not the current assigned engineer.');
+        }
+
+        if (empty($ticket->category_id) || empty($ticket->assigned_hierarchy)) {
+            return back()->with('error', 'No hierarchy information available for this ticket.');
+        }
+
+        $next = DB::table('category_engineer_hierarchy')
+            ->where('category_id', $ticket->category_id)
+            ->where('hierarchy', '>', $ticket->assigned_hierarchy)
+            ->orderBy('hierarchy')
+            ->first();
+
+        if (!$next) {
+            return back()->with('error', 'This ticket is already assigned to the last engineer in the hierarchy.');
+        }
+
+        // Log forward
+        DB::table('ticket_forward_logs')->insert([
+            'ticket_id'      => $ticket->id,
+            'from_user_id'   => $ticket->assigned_to,
+            'to_user_id'     => $next->user_id,
+            'from_hierarchy' => $ticket->assigned_hierarchy,
+            'to_hierarchy'   => $next->hierarchy,
+            'note'           => null,
+            'created_at'     => now(),
+            'updated_at'     => now(),
+        ]);
+
+        // Update ticket assignment
+        DB::table('tickets')
+            ->where('id', $id)
+            ->update([
+                'assigned_to'        => $next->user_id,
+                'assigned_hierarchy' => $next->hierarchy,
+                'updated_at'         => now(),
+            ]);
+
+        return redirect()
+            ->route('tickets.show', $id)
+            ->with('success', 'Ticket forwarded to next engineer.');
     }
 }

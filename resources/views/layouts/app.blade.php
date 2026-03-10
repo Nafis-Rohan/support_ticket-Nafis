@@ -140,6 +140,10 @@
                                     href="{{ route('config.engineer_mapping') }}">
                                     <i class="fas fa-user-cog me-2"></i> Engineer Mapping
                                 </a>
+                                <a class="nav-link sidebar-link {{ request()->is('config/extra-engineer-mapping*') ? 'active' : '' }}"
+                                    href="{{ route('config.extra_engineer_mapping') }}">
+                                    <i class="fas fa-users-cog me-2"></i> Extra Engineer Mapping
+                                </a>
                             </li>
                             @endif
 

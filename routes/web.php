@@ -51,6 +51,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/config/engineer-mapping', [EngineerMappingController::class, 'store'])
         ->name('config.engineer_mapping.store');
 
+    // Extra Engineer Mapping
+    Route::get('/config/extra-engineer-mapping', [EngineerMappingController::class, 'extra'])
+        ->name('config.extra_engineer_mapping');
+    Route::post('/config/extra-engineer-mapping', [EngineerMappingController::class, 'storeExtra'])
+        ->name('config.extra_engineer_mapping.store');
+
     //sub-categories
     Route::get('/sub-categories/{categoryId}', [TicketController::class, 'getSubCategories'])
         ->name('sub_categories.by_category');
@@ -69,6 +75,10 @@ Route::middleware('auth')->group(function () {
     // assign engineers
     Route::post('/tickets/{id}/assign', [TicketController::class, 'assignEngineer'])
         ->name('tickets.assign');
+
+    // forward to next engineer in hierarchy
+    Route::post('/tickets/{id}/forward', [TicketController::class, 'forwardToNextEngineer'])
+        ->name('tickets.forward');
 
     // reports
     Route::get('/reports/branch', [ReportsController::class, 'branchReport']);
