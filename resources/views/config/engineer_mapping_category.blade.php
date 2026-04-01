@@ -7,7 +7,14 @@
     </a>
 </div>
 
-<h2 class="mb-4">{{ $category->name }}</h2>
+<div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+    <h2 class="mb-0">{{ $category->name }}</h2>
+    @if($categoryRoleId !== null)
+        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addEngineerModal">
+            <i class="fas fa-plus me-1"></i> Add Engineer
+        </button>
+    @endif
+</div>
 
 @if(session('success'))
 <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -25,50 +32,76 @@
 @if($categoryRoleId === null)
 <div class="alert alert-warning">This category has no assign_role_ids. Set it in Manage Categories (e.g. 1 for Software, 2 for Hardware).</div>
 @else
-<p class="text-muted mb-3">Check engineers for this category (role_id = {{ $categoryRoleId }}). Uncheck to set role_id to null.</p>
-
-<div class="card">
-    <div class="card-header bg-white">
-        <h6 class="mb-0">{{ $category->name }} — assign_role_ids: {{ $category->assign_role_ids }}</h6>
-    </div>
-    <div class="card-body">
-        <form action="{{ route('config.engineer_mapping.store') }}" method="POST">
-            @csrf
-            <input type="hidden" name="category_id" value="{{ $category->id }}">
-            <div class="table-responsive">
-                <table class="table table-bordered mb-0">
-                    <thead class="table-light">
+<div class="mb-3">
+    <strong>Assigned Engineers:</strong>
+    <div class="table-responsive mt-2">
+        <table class="table table-sm table-bordered align-middle mb-0" style="max-width: 700px;">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 60px;" class="text-center">SL</th>
+                    <th>Name</th>
+                    <th style="width: 140px;">Role</th>
+                    <th style="width: 90px;" class="text-center">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if(isset($assignedEngineers) && $assignedEngineers->isNotEmpty())
+                    @foreach($assignedEngineers as $i => $ae)
                         <tr>
-                            <th style="width: 60px;">Assign</th>
-                            <th>Name</th>
-                            <th>Role</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @forelse($engineers as $index => $engineer)
-                        @php $checked = (int) $engineer->role_id === (int) $categoryRoleId; @endphp
-                        <tr>
+                            <td class="text-center">{{ $i + 1 }}</td>
+                            <td>{{ $ae->name }}</td>
+                            <td>{{ $ae->role_name ?? $ae->role }}</td>
                             <td class="text-center">
-                                <input type="checkbox" name="user_ids[]" value="{{ $engineer->id }}"
-                                    {{ $checked ? 'checked' : '' }} class="form-check-input">
+                                <form method="POST" action="{{ route('config.engineer_mapping.remove_engineer', $category->id) }}" class="d-inline">
+                                    @csrf
+                                    <input type="hidden" name="user_id" value="{{ $ae->id }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Remove">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                </form>
                             </td>
-                            <td>{{ $engineer->name }}</td>
-                            <td>{{ $engineer->role_name ?? $engineer->role }}</td>
                         </tr>
-                        @empty
-                        <tr>
-                            <td colspan="4" class="text-center text-muted py-4">No engineers found.</td>
-                        </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-            @if($engineers->isNotEmpty())
-            <div class="mt-3">
-                <button type="submit" class="btn btn-primary">Save</button>
-            </div>
-            @endif
-        </form>
+                    @endforeach
+                @else
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-3">None</td>
+                    </tr>
+                @endif
+            </tbody>
+        </table>
+    </div>
+</div>
+@endif
+
+@if($categoryRoleId !== null)
+<!-- Add Engineer Modal -->
+<div class="modal fade" id="addEngineerModal" tabindex="-1" aria-labelledby="addEngineerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ route('config.engineer_mapping.add_engineer', $category->id) }}">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addEngineerModalLabel">Add Engineer to {{ $category->name }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label">Engineer</label>
+                    <select name="user_id" class="form-select" required>
+                        <option value="">-- Select Engineer --</option>
+                        @foreach(($availableEngineers ?? collect()) as $e)
+                            <option value="{{ $e->id }}">{{ $e->name }} ({{ $e->role_name ?? $e->role }})</option>
+                        @endforeach
+                    </select>
+                    <small class="text-muted d-block mt-2">
+                        Only eligible users (Admin/Engineer) are shown.
+                    </small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Add</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 @endif

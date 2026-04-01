@@ -102,9 +102,12 @@
                 </div>
 
                 <div class="form-group mb-4">
-                    <label for="attachment" class="form-label label-bg">Attach File (optional)</label>
-                    <input type="file" name="attachment" id="attachment" class="form-control-file">
-                    <small class="text-muted">Allowed: jpg, png, pdf, doc, docx, xlsx (max 2 MB)</small>
+                    <label class="form-label label-bg">Attach Files (optional)</label>
+                    <div id="attachment-fields">
+                        <input type="file" name="attachments[]" class="form-control form-control-sm mb-2 attachment-input" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xlsx">
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary mb-2" id="addAttachmentBtn">+ Add another file</button>
+                    <small class="text-muted d-block">Allowed: jpg, png, pdf, doc, docx, xlsx (max 2 MB each). Use the button to add more files.</small>
                 </div>
 
                 <div class="text-center">
@@ -254,6 +257,19 @@ document.addEventListener('DOMContentLoaded', function () {
         if (oldCategory) {
             loadSubCategories(oldCategory, oldSubCategory);
         }
+    }
+
+    const addAttachmentBtn = document.getElementById('addAttachmentBtn');
+    const attachmentFields = document.getElementById('attachment-fields');
+    if (addAttachmentBtn && attachmentFields) {
+        addAttachmentBtn.addEventListener('click', function () {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.name = 'attachments[]';
+            input.className = 'form-control form-control-sm mb-2 attachment-input';
+            input.setAttribute('accept', '.jpg,.jpeg,.png,.pdf,.doc,.docx,.xlsx');
+            attachmentFields.appendChild(input);
+        });
     }
 });
 </script>

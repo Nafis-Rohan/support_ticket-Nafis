@@ -6,8 +6,10 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome 5 (recommended) -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-    <! -- Fonts -->
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- DataTables -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.8/css/jquery.dataTables.min.css">
 
 
         <style>
@@ -113,14 +115,37 @@
                                     href="{{ url('/dashboard') }}">
                                     <i class="fas fa-home me-2"></i> Dashboard
                                 </a>
+                                @if(auth()->user()->role === 2)
+                                <a class="nav-link sidebar-link {{ request()->is('tickets/engineer-open') ? 'active' : '' }}"
+                                    href="{{ route('tickets.engineer_open') }}">
+                                    <i class="fas fa-ticket-alt me-2"></i> Tickets
+                                </a>
+                                @endif
                             </li>
                             @endif
 
                             <li class="nav-item mb-1">
-                                <a class="nav-link sidebar-link {{ request()->is('tickets*') ? 'active' : '' }}"
+                                <a class="nav-link sidebar-link {{ request()->is('tickets') ? 'active' : '' }}"
                                     href="{{ url('/tickets') }}">
+                                    <i class="fas fa-ticket-alt me-2"></i>
+                                    @if(in_array(auth()->user()->role, [1, 2]))
+                                        Solved Tickets
+                                    @else
+                                        Tickets
+                                    @endif
+                                </a>
+                                @if(auth()->user()->role === 1)
+                                <a class="nav-link sidebar-link {{ request()->is('tickets/open') ? 'active' : '' }}"
+                                    href="{{ route('tickets.open') }}">
                                     <i class="fas fa-ticket-alt me-2"></i> Tickets
                                 </a>
+                                @endif
+                                @if(auth()->user()->role === 2)
+                                <a class="nav-link sidebar-link {{ request()->is('tickets/by-category') ? 'active' : '' }}"
+                                    href="{{ route('tickets.by_category') }}">
+                                    <i class="fas fa-layer-group me-2"></i> Category Tickets
+                                </a>
+                                @endif
                             </li>
 
                             @if(auth()->user()->role === 1)
@@ -140,10 +165,6 @@
                                     href="{{ route('config.engineer_mapping') }}">
                                     <i class="fas fa-user-cog me-2"></i> Engineer Mapping
                                 </a>
-                                <a class="nav-link sidebar-link {{ request()->is('config/extra-engineer-mapping*') ? 'active' : '' }}"
-                                    href="{{ route('config.extra_engineer_mapping') }}">
-                                    <i class="fas fa-users-cog me-2"></i> Extra Engineer Mapping
-                                </a>
                             </li>
                             @endif
 
@@ -157,7 +178,7 @@
                                     <i class="fas fa-building me-2"></i> Date-wise Report
                                 </a>
                                 <a class="nav-link sidebar-link {{ request()->is('reports/problem') ? 'active' : '' }}"
-                                    href="{{ url('#') }}">
+                                    href="{{ route('reports.problem') }}">
                                     <i class="fas fa-exclamation-circle me-2"></i> Problem-wise Report
                                 </a>
                             </li>
@@ -182,7 +203,10 @@
         </div>
     </footer>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.8/js/jquery.dataTables.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    @yield('scripts')
 </body>
 
 </html>

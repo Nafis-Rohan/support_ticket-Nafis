@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<h2 class="mb-4">Extra Engineer Mapping</h2>
+<h2 class="mb-4">Engineer Mapping</h2>
 
 @if(session('success'))
 <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -12,7 +12,7 @@
 
 <div class="card mb-4">
     <div class="card-body">
-        <form method="POST" action="{{ route('config.extra_engineer_mapping.store') }}">
+        <form method="POST" action="{{ route('config.engineer_mapping.store') }}">
             @csrf
 
             <div class="row g-3 align-items-end mb-3">

@@ -18,90 +18,6 @@ class EngineerMappingController extends Controller
         return view('config.engineer_mapping', compact('categories'));
     }
 
-    public function extra(Request $request)
-    {
-        if (auth()->user()->role != 1) {
-            abort(403, 'Only administrators can access Extra Engineer Mapping.');
-        }
-
-        $selectedCategoryId = $request->query('category_id');
-
-        $categories = DB::table('categories')
-            ->orderBy('name')
-            ->get(['id', 'name', 'assign_role_ids']);
-
-        $engineers = DB::table('users')
-            ->where('role', 2)
-            ->orWhere('role', 1)
-            ->orderBy('name')
-            ->get(['id', 'name', 'role_id']);
-
-        $hierarchies = DB::table('category_engineer_hierarchy')
-            ->orderBy('category_id')
-            ->orderBy('hierarchy')
-            ->get()
-            ->groupBy('category_id');
-
-        return view('config.extra_engineer_mapping', compact('categories', 'engineers', 'hierarchies', 'selectedCategoryId'));
-    }
-
-    public function storeExtra(Request $request)
-    {
-        if (auth()->user()->role != 1) {
-            abort(403, 'Only administrators can access Extra Engineer Mapping.');
-        }
-
-        $data = $request->validate([
-            'category_id'   => 'required|exists:categories,id',
-            'user_ids'      => 'array',
-            'user_ids.*'    => 'nullable|exists:users,id',
-            'hierarchies'   => 'array',
-            'hierarchies.*' => 'nullable|integer|min:1',
-        ]);
-
-        $categoryId  = (int) $data['category_id'];
-        $userIds     = $data['user_ids'] ?? [];
-        $hierarchies = $data['hierarchies'] ?? [];
-
-        $rows = [];
-        foreach ($userIds as $index => $userId) {
-            $userId     = $userId ?? null;
-            $hierarchy  = $hierarchies[$index] ?? null;
-
-            if ($userId && $hierarchy) {
-                $rows[] = [
-                    'user_id'   => (int) $userId,
-                    'hierarchy' => (int) $hierarchy,
-                ];
-            }
-        }
-
-        if (!empty($rows)) {
-            usort($rows, function ($a, $b) {
-                return $a['hierarchy'] <=> $b['hierarchy'];
-            });
-        }
-
-        DB::table('category_engineer_hierarchy')
-            ->where('category_id', $categoryId)
-            ->delete();
-
-        $now = now();
-        foreach ($rows as $row) {
-            DB::table('category_engineer_hierarchy')->insert([
-                'category_id' => $categoryId,
-                'user_id'     => $row['user_id'],
-                'hierarchy'   => $row['hierarchy'],
-                'created_at'  => $now,
-                'updated_at'  => $now,
-            ]);
-        }
-
-        return redirect()
-            ->route('config.extra_engineer_mapping', ['category_id' => $categoryId])
-            ->with('success', 'Extra engineer hierarchy saved.');
-    }
-
     public function showCategory($id)
     {
         if (auth()->user()->role != 1) {
@@ -131,7 +47,145 @@ class EngineerMappingController extends Controller
                 'roles.name as role_name',
             ]);
 
-        return view('config.engineer_mapping_category', compact('category', 'engineers', 'categoryRoleId'));
+        $assignedEngineers = DB::table('category_engineer_map as cem')
+            ->join('users as u', 'cem.user_id', '=', 'u.id')
+            ->leftJoin('roles as r', 'u.role', '=', 'r.id')
+            ->where('cem.category_id', (int) $category->id)
+            ->orderBy('u.name')
+            ->get([
+                'u.id',
+                'u.name',
+                'u.role',
+                'u.role_id',
+                'r.name as role_name',
+            ]);
+
+        // Available = eligible users (admin/engineer) not already assigned to THIS category
+        $availableEngineers = DB::table('users as u')
+            ->leftJoin('roles as r', 'u.role', '=', 'r.id')
+            ->leftJoin('category_engineer_map as cem', function ($join) use ($id) {
+                $join->on('cem.user_id', '=', 'u.id')
+                    ->where('cem.category_id', '=', (int) $id);
+            })
+            ->whereIn('u.role', [1, 2])
+            ->whereNull('cem.user_id')
+            ->orderBy('u.name')
+            ->get([
+                'u.id',
+                'u.name',
+                'u.role',
+                'u.role_id',
+                'r.name as role_name',
+            ]);
+
+        return view('config.engineer_mapping_category', compact(
+            'category',
+            'engineers',
+            'categoryRoleId',
+            'assignedEngineers',
+            'availableEngineers'
+        ));
+    }
+
+    public function addEngineer(Request $request, $id)
+    {
+        if (auth()->user()->role != 1) {
+            abort(403);
+        }
+
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $category = DB::table('categories')->where('id', $id)->first();
+        if (!$category || empty($category->assign_role_ids)) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'Category has no assign_role_id set.');
+        }
+
+        $assignRoleId = $this->firstAssignRoleId($category->assign_role_ids);
+        if ($assignRoleId === null) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'Category assign_role_ids is invalid.');
+        }
+
+        $user = DB::table('users')->where('id', (int) $request->user_id)->first();
+        if (!$user || !in_array((int) $user->role, [1, 2], true)) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'Selected user is not eligible.');
+        }
+
+        // Don't allow duplicates in same category
+        $alreadyInThisCategory = DB::table('category_engineer_map')
+            ->where('category_id', (int) $id)
+            ->where('user_id', (int) $request->user_id)
+            ->exists();
+        if ($alreadyInThisCategory) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'This user is already assigned to this category.');
+        }
+
+        DB::table('category_engineer_map')->insert([
+            'category_id' => (int) $id,
+            'user_id'     => (int) $request->user_id,
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        return redirect()
+            ->route('config.engineer_mapping.category', $id)
+            ->with('success', 'Engineer added to this category.');
+    }
+
+    public function removeEngineer(Request $request, $id)
+    {
+        if (auth()->user()->role != 1) {
+            abort(403);
+        }
+
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $category = DB::table('categories')->where('id', $id)->first();
+        if (!$category || empty($category->assign_role_ids)) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'Category has no assign_role_id set.');
+        }
+
+        $assignRoleId = $this->firstAssignRoleId($category->assign_role_ids);
+        if ($assignRoleId === null) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'Category assign_role_ids is invalid.');
+        }
+
+        $user = DB::table('users')->where('id', (int) $request->user_id)->first();
+        if (!$user || !in_array((int) $user->role, [1, 2], true)) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'Selected user is not eligible.');
+        }
+
+        $deleted = DB::table('category_engineer_map')
+            ->where('category_id', (int) $id)
+            ->where('user_id', (int) $request->user_id)
+            ->delete();
+
+        if (!$deleted) {
+            return redirect()
+                ->route('config.engineer_mapping.category', $id)
+                ->with('error', 'This user is not assigned to this category.');
+        }
+
+        return redirect()
+            ->route('config.engineer_mapping.category', $id)
+            ->with('success', 'Engineer removed from this category.');
     }
 
     public function store(Request $request)

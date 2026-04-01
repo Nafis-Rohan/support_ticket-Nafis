@@ -15,14 +15,25 @@ Route::post('/login', [LoginController::class, 'login'])->middleware('guest');
 Route::middleware('auth')->group(function () {
     Route::get('/admin/dashboard', [DashboardController::class, 'adminDashboard'])
         ->name('admin.dashboard'); //admin Dashboard
+    Route::get('/admin/dashboard/data', [DashboardController::class, 'adminDashboardData'])
+        ->name('admin.dashboard.data');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/engineer-stats', [DashboardController::class, 'engineerStats'])
+        ->name('dashboard.engineer_stats');
     Route::get('/tickets', [TicketController::class, 'index'])->name('tickets.index');
+    Route::get('/tickets/open', [TicketController::class, 'openTickets'])->name('tickets.open');
+    Route::get('/tickets/engineer-open', [TicketController::class, 'engineerOpenTickets'])
+        ->name('tickets.engineer_open');
+    Route::get('/tickets/by-category', [TicketController::class, 'byCategory'])
+        ->name('tickets.by_category');
     // CRUD ticket
     Route::get('/tickets/create', [TicketController::class, 'create'])->name('tickets.create');
     Route::post('/tickets', [TicketController::class, 'store'])->name('tickets.store');
     Route::get('/tickets/{id}', [TicketController::class, 'show'])->name('tickets.show');
     Route::put('/tickets/{id}', [TicketController::class, 'update'])->name('tickets.update');
+    Route::post('/tickets/{id}/priority', [TicketController::class, 'updatePriority'])
+        ->name('tickets.update_priority');
 
     // CRUD Categories
     Route::get('/categories', [CategoryController::class, 'index'])->name('categories.index');
@@ -43,19 +54,17 @@ Route::middleware('auth')->group(function () {
     Route::get('/config/sub-categories/delete/{id}', [CategoryController::class, 'destroySubCategory'])
         ->name('config.sub_categories.destroy');
 
-    // Engineer Mapping (config)
+    // Engineer Mapping (classic checkbox-based)
     Route::get('/config/engineer-mapping', [EngineerMappingController::class, 'index'])
         ->name('config.engineer_mapping');
     Route::get('/config/engineer-mapping/category/{id}', [EngineerMappingController::class, 'showCategory'])
         ->name('config.engineer_mapping.category');
     Route::post('/config/engineer-mapping', [EngineerMappingController::class, 'store'])
         ->name('config.engineer_mapping.store');
-
-    // Extra Engineer Mapping
-    Route::get('/config/extra-engineer-mapping', [EngineerMappingController::class, 'extra'])
-        ->name('config.extra_engineer_mapping');
-    Route::post('/config/extra-engineer-mapping', [EngineerMappingController::class, 'storeExtra'])
-        ->name('config.extra_engineer_mapping.store');
+    Route::post('/config/engineer-mapping/category/{id}/add', [EngineerMappingController::class, 'addEngineer'])
+        ->name('config.engineer_mapping.add_engineer');
+    Route::post('/config/engineer-mapping/category/{id}/remove', [EngineerMappingController::class, 'removeEngineer'])
+        ->name('config.engineer_mapping.remove_engineer');
 
     //sub-categories
     Route::get('/sub-categories/{categoryId}', [TicketController::class, 'getSubCategories'])
@@ -76,12 +85,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/tickets/{id}/assign', [TicketController::class, 'assignEngineer'])
         ->name('tickets.assign');
 
-    // forward to next engineer in hierarchy
-    Route::post('/tickets/{id}/forward', [TicketController::class, 'forwardToNextEngineer'])
-        ->name('tickets.forward');
+    // Engineer take action (attend / forward)
+    Route::post('/tickets/{id}/take-action', [TicketController::class, 'takeAction'])
+        ->name('tickets.take_action');
 
     // reports
     Route::get('/reports/branch', [ReportsController::class, 'branchReport']);
+    Route::get('/reports/problem', [ReportsController::class, 'problemReport'])->name('reports.problem');
 
 
     Route::post('/logout', [LoginController::class, 'logout'])->name('logout');

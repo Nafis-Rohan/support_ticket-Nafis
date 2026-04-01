@@ -60,6 +60,9 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                // Prevent MySQL from converting TIMESTAMP columns to your local timezone
+                // (e.g., UTC+6) and then Laravel interpreting them as UTC.
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '+00:00'",
             ]) : [],
         ],
 

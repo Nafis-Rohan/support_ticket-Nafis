@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 
 class LoginController extends Controller
 {
-    protected $redirectTo = '/tickets';
+    protected $redirectTo = '/dashboard';
 
     public function showLoginForm()
     {
@@ -38,7 +38,7 @@ class LoginController extends Controller
                 return redirect('/admin/dashboard');
             } elseif ($user->role == 2) { // Engineer
                 session()->flash('success', 'Welcome, Engineer!');
-                return redirect('/tickets');
+                return redirect('/dashboard');
             } elseif ($user->role == 3) { // Branch
                 session()->flash('success', 'Welcome');
                 return redirect('/dashboard');
