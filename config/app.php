@@ -71,6 +71,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Display timezone (user-facing dates)
+    |--------------------------------------------------------------------------
+    |
+    | Datetimes are stored and read as UTC from MySQL. Convert to this zone in the UI.
+    |
+    */
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'Asia/Dhaka'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

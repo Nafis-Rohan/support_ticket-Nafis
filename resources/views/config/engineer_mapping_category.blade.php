@@ -93,7 +93,7 @@
                         @endforeach
                     </select>
                     <small class="text-muted d-block mt-2">
-                        Only eligible users (Admin/Engineer) are shown.
+                        Only role=1 users are listed.
                     </small>
                 </div>
                 <div class="modal-footer">

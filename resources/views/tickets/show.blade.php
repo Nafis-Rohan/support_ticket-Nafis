@@ -35,7 +35,7 @@
                     </span>
                 </div>
                 <div class="mt-2 mt-md-0">
-                    <span>{{ \Carbon\Carbon::parse($ticket->created_at)->format('d M, Y h:i A') }}</span>
+                    <span>{{ optional(\App\Support\DisplayTime::fromUtcStored($ticket->created_at))->format('d M, Y h:i A') }}</span>
                 </div>
             </div>
 
@@ -60,6 +60,21 @@
                     {!! nl2br(e($ticket->description)) !!}
                 </div>
             </div>
+
+            @php
+                $handoffNote = trim((string) ($ticket->handoff_note ?? ''));
+                $isReceivingAssignee = in_array((int) (auth()->user()->role ?? 0), [1, 2], true)
+                    && !empty($ticket->assigned_to)
+                    && (int) $ticket->assigned_to === (int) auth()->id();
+            @endphp
+            @if($isReceivingAssignee && $handoffNote !== '')
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-body py-3" style="background: #fff3cd;">
+                        <div class="fw-semibold mb-1">Handoff Message</div>
+                        <div class="small" style="font-size: 13px;">{!! nl2br(e($handoffNote)) !!}</div>
+                    </div>
+                </div>
+            @endif
 
             {{-- Branch: show solved message only (when ticket is solved) --}}
             @if((int) (auth()->user()->role ?? 0) === 3 && (int) ($ticket->status ?? 0) === 2)
@@ -149,22 +164,29 @@
                                 @elseif(empty($ticket->category_id))
                                     <p class="mb-0 text-muted small">Set a category first before assigning an engineer.</p>
                                 @elseif(($manualAssignEngineers ?? collect())->isEmpty())
-                                    <p class="mb-0 text-muted small">No engineers are mapped to this ticket&rsquo;s category.</p>
+                                    <p class="mb-0 text-muted small">No engineer accounts are available to assign.</p>
                                 @else
                                     <form method="POST" action="{{ route('tickets.assign', $ticket->id) }}" class="d-flex flex-column gap-2">
                                         @csrf
                                         <div>
-                                            <label for="manual_assign_engineer_id" class="form-label small mb-1">Engineer</label>
+                                            <label for="manual_assign_engineer_id" class="form-label small mb-1">Assign to</label>
                                             <select
                                                 name="engineer_id"
                                                 id="manual_assign_engineer_id"
                                                 class="form-select form-select-sm"
                                                 required>
-                                                <option value="" disabled {{ empty($ticket->assigned_to) ? 'selected' : '' }}>— Select engineer —</option>
+                                                <option value="" disabled {{ empty($ticket->assigned_to) ? 'selected' : '' }}>— Select user —</option>
                                                 @foreach($manualAssignEngineers as $eng)
+                                                    @php
+                                                        $displayRole = (int) ($eng->role ?? 0) === 1 ? 'Support' : (((int) ($eng->role ?? 0) === 2) ? 'Developer' : 'User');
+                                                        $displayName = trim((string) ($eng->name ?? ''));
+                                                        if ($displayName === '') {
+                                                            $displayName = 'User #' . (int) ($eng->id ?? 0);
+                                                        }
+                                                    @endphp
                                                     <option value="{{ $eng->id }}"
                                                         {{ (int) ($ticket->assigned_to ?? 0) === (int) $eng->id ? 'selected' : '' }}>
-                                                        {{ $eng->name }}
+                                                        {{ $displayName }} ({{ $displayRole }})
                                                     </option>
                                                 @endforeach
                                             </select>
@@ -189,20 +211,80 @@
                         </div>
                     </div>
                 </div>
-            @endif
-
-            {{-- Handoff message before Assigned Engineer / Action --}}
-            @php
-                $handoffNote = trim((string) ($ticket->handoff_note ?? ''));
-                $isReceivingEngineer = (int) auth()->user()->role === 2
-                    && !empty($ticket->assigned_to)
-                    && (int) $ticket->assigned_to === (int) auth()->id();
-            @endphp
-            @if($isReceivingEngineer && $handoffNote !== '')
-                <div class="card shadow-sm border-0 mb-3">
-                    <div class="card-body py-3" style="background: #fff3cd;">
-                        <div class="fw-semibold mb-1">Handoff Message</div>
-                        <div class="small" style="font-size: 13px;">{!! nl2br(e($handoffNote)) !!}</div>
+            @elseif(auth()->check() && (int) auth()->user()->role === 2)
+                {{-- Developer: read-only priority + Forward (developers only) --}}
+                @php
+                    $devAssignedToId = !empty($ticket->assigned_to) ? (int) $ticket->assigned_to : null;
+                    $devCanForward = (int) ($ticket->status ?? 0) !== 2
+                        && $devAssignedToId !== null
+                        && $devAssignedToId === (int) auth()->id();
+                    $otherDevelopers = ($forwardDeveloperOptions ?? collect())->filter(function ($u) {
+                        return (int) $u->id !== (int) auth()->id();
+                    });
+                @endphp
+                <div class="row g-3 mb-4">
+                    <div class="col-12 col-md-6">
+                        <div class="card shadow-sm border-0 h-100">
+                            <div class="card-header bg-white py-3">
+                                <h6 class="mb-0 fw-semibold">Priority</h6>
+                            </div>
+                            <div class="card-body py-3">
+                                @if(!empty($ticket->priority_name))
+                                    @if($ticket->priority_name == 'High')
+                                        <span class="badge bg-success fs-6 px-3 py-2">High</span>
+                                    @elseif($ticket->priority_name == 'Medium')
+                                        <span class="badge bg-warning text-dark fs-6 px-3 py-2">Medium</span>
+                                    @elseif($ticket->priority_name == 'Low')
+                                        <span class="badge bg-info fs-6 px-3 py-2">Low</span>
+                                    @elseif($ticket->priority_name == 'Urgent')
+                                        <span class="badge bg-danger fs-6 px-3 py-2">Urgent</span>
+                                    @else
+                                        <span class="badge bg-secondary fs-6 px-3 py-2">{{ $ticket->priority_name }}</span>
+                                    @endif
+                                @else
+                                    <span class="badge bg-secondary fs-5 px-4 py-2">N/A</span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <div class="card shadow-sm border-0 h-100">
+                            <div class="card-header bg-white py-3">
+                                <h6 class="mb-0 fw-semibold">Forward</h6>
+                            </div>
+                            <div class="card-body py-3">
+                                @if((int) $ticket->status === 2)
+                                    <p class="mb-0 text-muted small">Forward is not available for a solved ticket.</p>
+                                @elseif(!$devCanForward)
+                                    <p class="mb-0 text-muted small">Forward is available when you are attending this ticket.</p>
+                                @elseif($otherDevelopers->isEmpty())
+                                    <p class="mb-0 text-muted small">No other developers to forward to.</p>
+                                @else
+                                    <form method="POST" action="{{ route('tickets.take_action', $ticket->id) }}" class="d-flex flex-column gap-2">
+                                        @csrf
+                                        <input type="hidden" name="action" value="forward">
+                                        <div>
+                                            <label for="dev_forward_to" class="form-label small mb-1">Forward to</label>
+                                            <select name="forward_to" id="dev_forward_to" class="form-select form-select-sm" required>
+                                                <option value="" disabled selected>— Select developer —</option>
+                                                @foreach($otherDevelopers as $u)
+                                                    <option value="{{ $u->id }}">{{ $u->name }} (Developer)</option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label for="dev_forward_note" class="form-label small mb-1">
+                                                Message <span class="text-muted fw-normal">(optional)</span>
+                                            </label>
+                                            <textarea name="note" id="dev_forward_note" rows="2" class="form-control form-control-sm" placeholder="Optional note for the next developer..."></textarea>
+                                        </div>
+                                        <div class="d-flex justify-content-end">
+                                            <button type="submit" class="btn btn-success btn-sm px-3">Forward</button>
+                                        </div>
+                                    </form>
+                                @endif
+                            </div>
+                        </div>
                     </div>
                 </div>
             @endif
@@ -214,7 +296,11 @@
                     $isEngineer = $role === 2;
                     $isMappedForCategory = (bool) ($isEngineerForCategory ?? false);
                     $assignedToId = !empty($ticket->assigned_to) ? (int) $ticket->assigned_to : null;
-                    $isSelfAssigned = $isEngineer && $assignedToId !== null && $assignedToId === (int) auth()->id();
+                    $isSelfAssigned = $assignedToId !== null && $assignedToId === (int) auth()->id();
+                    // Admin (1) or Engineer (2) who is the assigned attendee can use the Solve card
+                    $canSolveAsAttendee = in_array($role, [1, 2], true)
+                        && $assignedToId !== null
+                        && $assignedToId === (int) auth()->id();
                 @endphp
                 <div class="row g-3 mb-3 mt-1">
                     <div class="col-12 col-md-6">
@@ -242,48 +328,31 @@
                             </div>
                             <div class="card-body py-4">
                                 @php
-                                    $role = auth()->user()->role ?? 0;
-                                    $isEngineer = (int) $role === 2;
+                                    $role = (int) (auth()->user()->role ?? 0);
+                                    $isEngineer = $role === 2;
+                                    $isAdmin = $role === 1;
                                     $isMappedForCategory = (bool) ($isEngineerForCategory ?? false);
                                     $assignedToId = !empty($ticket->assigned_to) ? (int) $ticket->assigned_to : null;
-                                    $isSelfAssigned = $isEngineer && $assignedToId !== null && $assignedToId === (int) auth()->id();
+                                    $isSelfAssigned = $assignedToId !== null && $assignedToId === (int) auth()->id();
                                 @endphp
 
                                 @if((int) $ticket->status === 2)
                                     <div class="alert alert-success mb-0">
                                         <strong>Solved By:</strong> {{ $ticket->solved_by_name ?? '—' }}
                                     </div>
-                                @elseif($isEngineer && $isMappedForCategory)
+                                @elseif($isEngineer && ($isMappedForCategory || $isSelfAssigned))
                                     @if($assignedToId !== null && !$isSelfAssigned)
                                         <div class="alert alert-info mb-0">
                                             <strong>{{ $ticket->assigned_to_name ?? 'An engineer' }}</strong> is working on this ticket.
                                         </div>
                                     @elseif($isSelfAssigned)
-                                        
-                                        @if(!($manualAssignEngineers ?? collect())->isEmpty())
-                                            <form method="POST" action="{{ route('tickets.take_action', $ticket->id) }}" class="mb-0">
-                                                @csrf
-                                                <input type="hidden" name="action" value="forward">
-                                                <div class="mb-2">
-                                                    <label class="form-label small mb-1">Forward to</label>
-                                                    <select name="forward_to" class="form-select form-select-sm" required>
-                                                        <option value="" disabled selected>— Select engineer —</option>
-                                                        @foreach($manualAssignEngineers as $eng)
-                                                            @if((int) $eng->id === (int) auth()->id())
-                                                                @continue
-                                                            @endif
-                                                            <option value="{{ $eng->id }}">{{ $eng->name }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                </div>
-                                                <div class="mb-2">
-                                                    <label class="form-label small mb-1">Note (optional)</label>
-                                                    <textarea name="note" rows="2" class="form-control form-control-sm" placeholder="Optional note for the next engineer..."></textarea>
-                                                </div>
-                                                <button type="submit" class="btn btn-success btn-sm">Forward</button>
-                                            </form>
-                                        @else
-                                            <p class="text-muted small mb-0">No mapped engineers to forward for this category.</p>
+                                        <div class="alert alert-success mb-0">
+                                            You are working on this ticket.
+                                        </div>
+                                        @if($isEngineer)
+                                            <p class="text-muted small mb-0 mt-2">
+                                                Use the <strong>Forward</strong> section above to send this ticket to another developer.
+                                            </p>
                                         @endif
                                     @else
                                         {{-- Not assigned yet: allow Attend for mapped engineer --}}
@@ -300,13 +369,26 @@
                                 @else
                                     {{-- Admin / non-engineer view --}}
                                     @if(!empty($ticket->assigned_to))
-                                        <div class="alert alert-info mb-0">
-                                            <strong>{{ $ticket->assigned_to_name ?? 'An engineer' }}</strong> is working on this ticket.
-                                        </div>
+                                        @if($isSelfAssigned && $isAdmin)
+                                            <div class="alert alert-success mb-0">
+                                                You are working on this ticket.
+                                            </div>
+                                        @else
+                                            <div class="alert alert-info mb-0">
+                                                <strong>{{ $ticket->assigned_to_name ?? 'Someone' }}</strong> is working on this ticket.
+                                            </div>
+                                        @endif
                                     @else
-                                        <div class="alert alert-secondary mb-0">
+                                        <div class="alert alert-secondary mb-2">
                                             No one is attending this ticket yet.
                                         </div>
+                                        @if($isAdmin)
+                                            <form method="POST" action="{{ route('tickets.take_action', $ticket->id) }}">
+                                                @csrf
+                                                <input type="hidden" name="action" value="attend">
+                                                <button type="submit" class="btn btn-primary btn-sm">Attend</button>
+                                            </form>
+                                        @endif
                                     @endif
                                 @endif
                             </div>
@@ -316,7 +398,7 @@
             @endif
 
             {{-- Solve card below both Assigned Engineer + Action cards --}}
-            @if(auth()->user()->role != 3 && (int) $ticket->status !== 2 && (isset($isSelfAssigned) ? $isSelfAssigned : false))
+            @if(auth()->user()->role != 3 && (int) $ticket->status !== 2 && ($canSolveAsAttendee ?? false))
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-white py-3">
                         <h6 class="mb-0 fw-semibold">Solve</h6>

@@ -33,11 +33,10 @@ class EngineerMappingController extends Controller
         // assign_role_ids can be "1" or "1,2" – for mapping UI we use the first id
         $categoryRoleId = $this->firstAssignRoleId($assignId);
 
-        // Admin (role=1) + Engineer (role=2)
+        // Engineers only (users.role = 2) for category mapping UI
         $engineers = DB::table('users')
             ->leftJoin('roles', 'users.role', '=', 'roles.id')
-            ->whereIn('users.role', [1, 2])
-            ->orderBy('roles.id')
+            ->where('users.role', 1)
             ->orderBy('users.name')
             ->get([
                 'users.id',
@@ -60,14 +59,14 @@ class EngineerMappingController extends Controller
                 'r.name as role_name',
             ]);
 
-        // Available = eligible users (admin/engineer) not already assigned to THIS category
+        // Available = engineers (role 2) not already assigned to THIS category
         $availableEngineers = DB::table('users as u')
             ->leftJoin('roles as r', 'u.role', '=', 'r.id')
             ->leftJoin('category_engineer_map as cem', function ($join) use ($id) {
                 $join->on('cem.user_id', '=', 'u.id')
                     ->where('cem.category_id', '=', (int) $id);
             })
-            ->whereIn('u.role', [1, 2])
+            ->where('u.role', 1)
             ->whereNull('cem.user_id')
             ->orderBy('u.name')
             ->get([
@@ -112,10 +111,10 @@ class EngineerMappingController extends Controller
         }
 
         $user = DB::table('users')->where('id', (int) $request->user_id)->first();
-        if (!$user || !in_array((int) $user->role, [1, 2], true)) {
+        if (!$user || (int) $user->role !== 1) {
             return redirect()
                 ->route('config.engineer_mapping.category', $id)
-                ->with('error', 'Selected user is not eligible.');
+                ->with('error', 'Only role=1 users can be mapped here.');
         }
 
         // Don't allow duplicates in same category
@@ -165,11 +164,14 @@ class EngineerMappingController extends Controller
                 ->with('error', 'Category assign_role_ids is invalid.');
         }
 
-        $user = DB::table('users')->where('id', (int) $request->user_id)->first();
-        if (!$user || !in_array((int) $user->role, [1, 2], true)) {
+        $inMap = DB::table('category_engineer_map')
+            ->where('category_id', (int) $id)
+            ->where('user_id', (int) $request->user_id)
+            ->exists();
+        if (!$inMap) {
             return redirect()
                 ->route('config.engineer_mapping.category', $id)
-                ->with('error', 'Selected user is not eligible.');
+                ->with('error', 'This user is not assigned to this category.');
         }
 
         $deleted = DB::table('category_engineer_map')
@@ -256,3 +258,4 @@ class EngineerMappingController extends Controller
         return (int) $parts[0];
     }
 }
+

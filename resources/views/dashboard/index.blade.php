@@ -4,42 +4,42 @@
 <div class="container py-5">
 
     @if(auth()->user()->role != 2)
-        {{-- ====== CATEGORY DASHBOARD (TOP) ====== --}}
-        <div class="text-center mb-4">
-            <h3 class="text-secondary mb-3">Select a Category</h3>
-        </div>
+    {{-- ====== CATEGORY DASHBOARD (TOP) ====== --}}
+    <div class="text-center mb-4">
+        <h3 class="text-secondary mb-3">Select a Category</h3>
+    </div>
 
-        <div class="row justify-content-center mb-5">
-            @foreach($categories as $category)
-            <div class="col-12 col-sm-6 col-md-3 mb-4">
-                <a href="{{ route('dashboard.subcategories', $category->id) }}" class="text-decoration-none">
-                    <div class="card h-100 border-0 category-card
+    <div class="row justify-content-center mb-5">
+        @foreach($categories as $category)
+        <div class="col-12 col-sm-6 col-md-3 mb-4">
+            <a href="{{ route('dashboard.subcategories', $category->id) }}" class="text-decoration-none">
+                <div class="card h-100 border-0 category-card
                             @if(Str::contains(strtolower($category->name), 'software')) software-issues
                             @elseif(Str::contains(strtolower($category->name), 'hardware')) hardware-issues
                             @elseif(Str::contains(strtolower($category->name), 'mail')) e-mail-issues
                             @else general-it-issues @endif">
 
-                        <div class="card-body d-flex flex-column justify-content-center align-items-center">
-                            @if(Str::contains(strtolower($category->name), 'software'))
-                            <i class="fa fa-bug fa-3x mb-3 text-white"></i>
-                            @elseif(Str::contains(strtolower($category->name), 'hardware'))
-                            <i class="fa fa-microchip fa-3x mb-3 text-white"></i>
-                            @elseif(Str::contains(strtolower($category->name), 'mail'))
-                            <i class="fa fa-envelope fa-3x mb-3 text-white"></i>
-                            @else
-                            <i class="fa fa-cogs fa-3x mb-3 text-white"></i>
-                            @endif
-                            <h5 class="font-weight-bold text-white mb-0">{{ $category->name }}</h5>
-                        </div>
+                    <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                        @if(Str::contains(strtolower($category->name), 'software'))
+                        <i class="fa fa-bug fa-3x mb-3 text-white"></i>
+                        @elseif(Str::contains(strtolower($category->name), 'hardware'))
+                        <i class="fa fa-microchip fa-3x mb-3 text-white"></i>
+                        @elseif(Str::contains(strtolower($category->name), 'mail'))
+                        <i class="fa fa-envelope fa-3x mb-3 text-white"></i>
+                        @else
+                        <i class="fa fa-cogs fa-3x mb-3 text-white"></i>
+                        @endif
+                        <h5 class="font-weight-bold text-white mb-0">{{ $category->name }}</h5>
                     </div>
-                </a>
-            </div>
-            @endforeach
+                </div>
+            </a>
         </div>
+        @endforeach
+    </div>
 
-        <div class="text-center mb-4">
-            <hr>
-        </div>
+    <div class="text-center mb-4">
+        <hr>
+    </div>
     @endif
 
     @if(auth()->user()->role == 2)
@@ -76,9 +76,9 @@
         <div class="card-header bg-light text-grey d-flex justify-content-between align-items-center">
             <h5 class="mb-0">
                 @if(auth()->user()->role == 2)
-                    Today&rsquo;s tickets
+                Today&rsquo;s tickets
                 @else
-                    My Tickets
+                Today's Tickets
                 @endif
             </h5>
         </div>
@@ -138,7 +138,7 @@
                     <tbody>
 
                         @php
-                            $dashboardRows = auth()->user()->role == 2 ? ($engineerTodayTickets ?? collect()) : $tickets;
+                        $dashboardRows = auth()->user()->role == 2 ? ($engineerTodayTickets ?? collect()) : $tickets;
                         @endphp
                         @forelse ($dashboardRows as $index => $ticket)
                         <tr>
@@ -153,15 +153,15 @@
                             @if(auth()->user()->role == 2)
                             <td class="text-center">
                                 @if(($ticket->priority_name ?? '') == 'High')
-                                    <span class="badge bg-success">High</span>
+                                <span class="badge bg-success">High</span>
                                 @elseif(($ticket->priority_name ?? '') == 'Urgent')
-                                    <span class="badge bg-danger">Urgent</span>
+                                <span class="badge bg-danger">Urgent</span>
                                 @elseif(($ticket->priority_name ?? '') == 'Medium')
-                                    <span class="badge bg-warning text-dark">Medium</span>
+                                <span class="badge bg-warning text-dark">Medium</span>
                                 @elseif(($ticket->priority_name ?? '') == 'Low')
-                                    <span class="badge bg-info">Low</span>
+                                <span class="badge bg-info">Low</span>
                                 @else
-                                    <span class="badge bg-secondary">N/A</span>
+                                <span class="badge bg-secondary">N/A</span>
                                 @endif
                             </td>
                             @endif
@@ -186,22 +186,22 @@
                                 {{ $ticket->assigned_to_name ?? 'Unassigned' }}
                             </td>
                             @if(auth()->user()->role == 3)
-                                @php
-                                    $solvedMsg = trim((string) ($ticket->solved_message ?? ''));
-                                    $showSolvedMsg = ((int) ($ticket->status ?? 0) === 2) && $solvedMsg !== '';
-                                @endphp
-                                <td class="small text-start">
-                                    {{ $showSolvedMsg ? \Illuminate\Support\Str::limit($solvedMsg, 60) : '—' }}
-                                </td>
+                            @php
+                            $solvedMsg = trim((string) ($ticket->solved_message ?? ''));
+                            $showSolvedMsg = ((int) ($ticket->status ?? 0) === 2) && $solvedMsg !== '';
+                            @endphp
+                            <td class="small text-start">
+                                {{ $showSolvedMsg ? \Illuminate\Support\Str::limit($solvedMsg, 60) : '—' }}
+                            </td>
                             @endif
                             @if(auth()->user()->role == 2)
-                                @php
-                                    $note = trim((string) ($ticket->handoff_note ?? ''));
-                                    $showNote = ((int) ($ticket->assigned_to ?? 0) === (int) auth()->id()) && $note !== '';
-                                @endphp
-                                <td class="small text-start">
-                                    {{ $showNote ? \Illuminate\Support\Str::limit($note, 60) : '—' }}
-                                </td>
+                            @php
+                            $note = trim((string) ($ticket->handoff_note ?? ''));
+                            $showNote = ((int) ($ticket->assigned_to ?? 0) === (int) auth()->id()) && $note !== '';
+                            @endphp
+                            <td class="small text-start">
+                                {{ $showNote ? \Illuminate\Support\Str::limit($note, 60) : '—' }}
+                            </td>
                             @endif
 
                             {{-- Actions --}}
@@ -234,7 +234,7 @@
 
 @section('scripts')
 <script>
-    $(document).ready(function () {
+    $(document).ready(function() {
         // DataTables breaks if tbody column count does not match thead (e.g. wrong colspan on empty row).
         // Skip init when there is only the "no data" row with colspan.
         var $tbl = $('#dashboardTicketsTable');
@@ -243,10 +243,14 @@
         if ($tbl.length && !hasColspanRow) {
             $tbl.DataTable({
                 pageLength: 25,
-                order: [[0, 'desc']], // hidden TicketId column
-                columnDefs: [
-                    { targets: [0], visible: false, searchable: false }
-                ]
+                order: [
+                    [0, 'desc']
+                ], // hidden TicketId column
+                columnDefs: [{
+                    targets: [0],
+                    visible: false,
+                    searchable: false
+                }]
             });
         }
 
@@ -264,13 +268,13 @@
 
     function loadEngineerStats() {
         axios.get("{{ route('dashboard.engineer_stats') }}")
-            .then(function (response) {
+            .then(function(response) {
                 const data = response.data || {};
                 $('#pendingProcessingCount').text(data.pending_processing_count ?? 0);
                 $('#todayTicketCount').text(data.today_ticket_count ?? 0);
                 $('#todaySolvedCount').text(data.today_solved_count ?? 0);
             })
-            .catch(function () {
+            .catch(function() {
                 $('#pendingProcessingCount').text('0');
                 $('#todayTicketCount').text('0');
                 $('#todaySolvedCount').text('0');

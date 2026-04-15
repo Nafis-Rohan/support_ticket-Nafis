@@ -15,12 +15,40 @@
             $isEngineer = (int) auth()->user()->role === 2;
             $isOpenUnsolvedList = request()->routeIs('tickets.open', 'tickets.engineer_open');
             $openFilter = $openTicketFilter ?? 'today';
+            $branchFilter = $branchTicketFilter ?? 'solved';
             // DataTables breaks if an "empty" row uses a single colspan cell (column count mismatch).
             // Use empty tbody + language.emptyTable instead.
             $dataTablesEmptyMsg = ($isOpenUnsolvedList && $openFilter === 'today')
                 ? 'No tickets issued yet.'
                 : 'No tickets found.';
         @endphp
+
+        @if($isBranch && request()->routeIs('tickets.index'))
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 pb-2 border-bottom">
+            <span class="text-muted small fw-semibold me-1">Filter:</span>
+            <a href="{{ route('tickets.index', ['status' => 'solved']) }}"
+               class="btn btn-sm {{ $branchFilter === 'solved' ? 'btn-primary' : 'btn-outline-primary' }}">
+                Solved
+            </a>
+            <a href="{{ route('tickets.index', ['status' => 'unsolved']) }}"
+               class="btn btn-sm {{ $branchFilter === 'unsolved' ? 'btn-primary' : 'btn-outline-primary' }}">
+                Unsolved
+            </a>
+            <a href="{{ route('tickets.index', ['status' => 'all']) }}"
+               class="btn btn-sm {{ $branchFilter === 'all' ? 'btn-primary' : 'btn-outline-primary' }}">
+                All
+            </a>
+            <span class="text-muted small ms-md-2">
+                @if($branchFilter === 'solved')
+                    Showing solved tickets.
+                @elseif($branchFilter === 'unsolved')
+                    Showing pending and processing tickets.
+                @else
+                    Showing all tickets.
+                @endif
+            </span>
+        </div>
+        @endif
 
         @if($isOpenUnsolvedList && in_array(auth()->user()->role, [1, 2]))
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3 pb-2 border-bottom">

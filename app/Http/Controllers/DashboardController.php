@@ -103,10 +103,13 @@ class DashboardController extends Controller
                 'a.name as assigned_to_name',
                 'p.name as priority_name'
             )
-            ->whereExists(function ($q2) use ($userId) {
-                $q2->from('category_engineer_map as cem')
-                    ->whereColumn('cem.category_id', 't.category_id')
-                    ->where('cem.user_id', $userId);
+            ->where(function ($scope) use ($userId) {
+                $scope->where('t.assigned_to', $userId)
+                    ->orWhereExists(function ($q2) use ($userId) {
+                        $q2->from('category_engineer_map as cem')
+                            ->whereColumn('cem.category_id', 't.category_id')
+                            ->where('cem.user_id', $userId);
+                    });
             })
             ->whereIn('t.status', [0, 1])
             ->whereDate('t.created_at', Carbon::today());
@@ -142,10 +145,13 @@ class DashboardController extends Controller
         $today = Carbon::today();
 
         $baseQuery = DB::table('tickets as t')
-            ->whereExists(function ($q) use ($userId) {
-                $q->from('category_engineer_map as cem')
-                    ->whereColumn('cem.category_id', 't.category_id')
-                    ->where('cem.user_id', $userId);
+            ->where(function ($scope) use ($userId) {
+                $scope->where('t.assigned_to', $userId)
+                    ->orWhereExists(function ($q) use ($userId) {
+                        $q->from('category_engineer_map as cem')
+                            ->whereColumn('cem.category_id', 't.category_id')
+                            ->where('cem.user_id', $userId);
+                    });
             });
 
         $pendingProcessingCount = (clone $baseQuery)
@@ -157,10 +163,13 @@ class DashboardController extends Controller
             ->count();
 
         $todaySolvedCount = DB::table('tickets as t')
-            ->whereExists(function ($q) use ($userId) {
-                $q->from('category_engineer_map as cem')
-                    ->whereColumn('cem.category_id', 't.category_id')
-                    ->where('cem.user_id', $userId);
+            ->where(function ($scope) use ($userId) {
+                $scope->where('t.assigned_to', $userId)
+                    ->orWhereExists(function ($q) use ($userId) {
+                        $q->from('category_engineer_map as cem')
+                            ->whereColumn('cem.category_id', 't.category_id')
+                            ->where('cem.user_id', $userId);
+                    });
             })
             ->where('t.solved_by', $userId)
             ->whereDate('t.updated_at', $today)

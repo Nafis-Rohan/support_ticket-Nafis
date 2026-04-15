@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DisplayTime;
+
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -10,6 +12,19 @@ use Illuminate\Http\UploadedFile;
 
 class TicketController extends Controller
 {
+    private function isUserMappedToCategory(int $userId, $categoryId): bool
+    {
+        $categoryId = (int) $categoryId;
+        if ($categoryId <= 0) {
+            return false;
+        }
+
+        return DB::table('category_engineer_map')
+            ->where('category_id', $categoryId)
+            ->where('user_id', $userId)
+            ->exists();
+    }
+
     /**
      * @return 'all'|'today'
      */
@@ -20,7 +35,7 @@ class TicketController extends Controller
         return $f === 'all' ? 'all' : 'today';
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $query = DB::table('tickets')
             ->leftJoin('branches as b', 'tickets.user_id', '=', 'b.id') // user_id = branch_id
@@ -42,18 +57,34 @@ class TicketController extends Controller
 
         $role = auth()->user()->role;
 
+        $branchTicketFilter = 'solved';
+
         // Branch users (role 3): only their branch tickets
         if ($role == 3) {
             $query->where('tickets.user_id', auth()->user()->branch_id);
+
+            $branchTicketFilterRaw = strtolower((string) $request->query('status', 'solved'));
+            $branchTicketFilter = in_array($branchTicketFilterRaw, ['solved', 'unsolved', 'all'], true)
+                ? $branchTicketFilterRaw
+                : 'solved';
+
+            if ($branchTicketFilter === 'solved') {
+                $query->where('tickets.status', 2);
+            } elseif ($branchTicketFilter === 'unsolved') {
+                $query->whereIn('tickets.status', [0, 1]);
+            }
         }
 
-        // Engineer (role 2): tickets for categories assigned to them
+        // Engineer (role 2): show tickets from mapped categories OR explicitly assigned tickets
         if ($role == 2) {
             $userId = auth()->id();
-            $query->whereExists(function ($q) use ($userId) {
-                $q->from('category_engineer_map as cem')
-                    ->whereColumn('cem.category_id', 'tickets.category_id')
-                    ->where('cem.user_id', $userId);
+            $query->where(function ($scope) use ($userId) {
+                $scope->where('tickets.assigned_to', $userId)
+                    ->orWhereExists(function ($q) use ($userId) {
+                        $q->from('category_engineer_map as cem')
+                            ->whereColumn('cem.category_id', 'tickets.category_id')
+                            ->where('cem.user_id', $userId);
+                    });
             });
 
             // Engineer tickets page: only tickets solved by this engineer
@@ -61,15 +92,20 @@ class TicketController extends Controller
                 ->where('tickets.solved_by', $userId);
         }
 
-        // Admin (role 1): show only solved tickets
+        // Admin (role 1): show only solved tickets from categories mapped to this admin
         if ($role == 1) {
-            $query->where('tickets.status', 2);
+            $query->where('tickets.status', 2)
+                ->whereExists(function ($q) {
+                    $q->from('category_engineer_map as cem')
+                        ->whereColumn('cem.category_id', 'tickets.category_id')
+                        ->where('cem.user_id', auth()->id());
+                });
         }
 
         $tickets = $query->get();
 
-        $pageTitle = 'Solved Tickets';
-        return view('tickets.index', compact('tickets', 'pageTitle'));
+        $pageTitle = ($role == 3 && $branchTicketFilter === 'unsolved') ? 'Unsolved Tickets' : 'Solved Tickets';
+        return view('tickets.index', compact('tickets', 'pageTitle', 'branchTicketFilter'));
     }
 
     public function openTickets(Request $request)
@@ -98,6 +134,13 @@ class TicketController extends Controller
                 'sub_categories.name as sub_category_name'
             )
             ->whereIn('tickets.status', [0, 1]);
+
+        // Admin can view only categories mapped to this admin
+        $query->whereExists(function ($q) {
+            $q->from('category_engineer_map as cem')
+                ->whereColumn('cem.category_id', 'tickets.category_id')
+                ->where('cem.user_id', auth()->id());
+        });
 
         if ($openTicketFilter === 'today') {
             $query->whereDate('tickets.created_at', \Carbon\Carbon::today());
@@ -135,10 +178,13 @@ class TicketController extends Controller
                 'categories.name as category_name',
                 'sub_categories.name as sub_category_name'
             )
-            ->whereExists(function ($q) use ($userId) {
-                $q->from('category_engineer_map as cem')
-                    ->whereColumn('cem.category_id', 'tickets.category_id')
-                    ->where('cem.user_id', $userId);
+            ->where(function ($scope) use ($userId) {
+                $scope->where('tickets.assigned_to', $userId)
+                    ->orWhereExists(function ($q) use ($userId) {
+                        $q->from('category_engineer_map as cem')
+                            ->whereColumn('cem.category_id', 'tickets.category_id')
+                            ->where('cem.user_id', $userId);
+                    });
             })
             ->whereIn('tickets.status', [0, 1]);
 
@@ -382,29 +428,39 @@ class TicketController extends Controller
             abort(404);
         }
 
-        // Category engineers (for Take Action / Forward dropdown)
+        // Admin can open ticket details only for mapped categories.
+        if ((int) (auth()->user()->role ?? 0) === 1) {
+            $canView = $this->isUserMappedToCategory((int) auth()->id(), $ticket->category_id ?? null);
+            if (!$canView) {
+                abort(403, 'You are not mapped for this ticket category.');
+            }
+        }
+
+        // Manual Assign options: allow both Admin (role=1) and Engineer (role=2)
+        $manualAssignEngineers = DB::table('users')
+            ->whereIn('role', [1, 2])
+            ->orderBy('name')
+            ->get(['id', 'name', 'role']);
+
+        // Category-mapped engineers only (for Forward / rotation); excludes admins mistakenly in map
         $categoryEngineers = collect();
-        $manualAssignEngineers = collect();
+        $categoryMappedEngineers = collect();
         $isEngineerForCategory = false;
         $nextEngineer = null;
         if (!empty($ticket->category_id)) {
             $categoryEngineers = DB::table('category_engineer_map as cem')
                 ->join('users as u', 'cem.user_id', '=', 'u.id')
                 ->where('cem.category_id', (int) $ticket->category_id)
-                ->orderBy('u.name')
-                ->get(['u.id', 'u.name']);
-
-            $manualAssignEngineers = DB::table('category_engineer_map as cem')
-                ->join('users as u', 'cem.user_id', '=', 'u.id')
-                ->where('cem.category_id', (int) $ticket->category_id)
                 ->where('u.role', 2)
                 ->orderBy('u.name')
                 ->get(['u.id', 'u.name']);
 
+            $categoryMappedEngineers = $categoryEngineers;
+
             // Next engineer for the "Forward to Next Engineer" button.
             // We rotate inside the mapped engineer list for this ticket's category.
-            if ($manualAssignEngineers->count() > 0) {
-                $engineerList = $manualAssignEngineers->values()->all(); // array of objects {id,name}
+            if ($categoryMappedEngineers->count() > 0) {
+                $engineerList = $categoryMappedEngineers->values()->all(); // array of objects {id,name}
                 $assignedToId = !empty($ticket->assigned_to) ? (int) $ticket->assigned_to : null;
 
                 $currentIndex = null;
@@ -450,6 +506,12 @@ class TicketController extends Controller
             ->select('id', 'name')
             ->get();
 
+        // Developer Forward dropdown (role 2 only); used on ticket show for engineers
+        $forwardDeveloperOptions = DB::table('users')
+            ->where('role', 2)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         $assignedEngineers = collect();
         if (!empty($ticket->assigned_to)) {
             $u = DB::table('users')->where('id', $ticket->assigned_to)->first(['id', 'name']);
@@ -468,13 +530,13 @@ class TicketController extends Controller
         // - Pending = ticket created_at
         // - Processing = when status first became 1
         // - Solved = when status first became 2
-        $pendingAt = \Carbon\Carbon::parse($ticket->created_at);
+        $pendingAt = DisplayTime::fromUtcStored($ticket->created_at ?? null);
 
         $processingAt = null;
         $solvedAt = null;
         foreach ($logRows as $row) {
             $s = (int) ($row->status ?? 0);
-            $t = $row->created_at ? \Carbon\Carbon::parse($row->created_at) : null;
+            $t = DisplayTime::fromUtcStored($row->created_at ?? null);
             if (!$t) {
                 continue;
             }
@@ -488,10 +550,10 @@ class TicketController extends Controller
 
         // Fallbacks for older tickets where logs might be missing
         if ($processingAt === null && (int) $ticket->status >= 1) {
-            $processingAt = \Carbon\Carbon::parse($ticket->updated_at);
+            $processingAt = DisplayTime::fromUtcStored($ticket->updated_at ?? null);
         }
         if ($solvedAt === null && (int) $ticket->status === 2) {
-            $solvedAt = \Carbon\Carbon::parse($ticket->updated_at);
+            $solvedAt = DisplayTime::fromUtcStored($ticket->updated_at ?? null);
         }
 
         $priorities = collect();
@@ -513,11 +575,13 @@ class TicketController extends Controller
             'solvedAt',
             'assignedEngineers',
             'categoryEngineers',
+            'categoryMappedEngineers',
             'manualAssignEngineers',
             'isEngineerForCategory',
             'nextEngineer',
             'priorities',
-            'attachments'
+            'attachments',
+            'forwardDeveloperOptions'
         ));
     }
 
@@ -602,7 +666,7 @@ class TicketController extends Controller
         // If ticket is being marked as Solved, only the attending user can do it
         if ((int) $request->status === 2) {
             if (empty($ticket->assigned_to) || (int) $ticket->assigned_to !== (int) auth()->id()) {
-                return back()->with('error', 'Only the attending engineer can mark this ticket as solved.');
+                return back()->with('error', 'Only the user currently attending this ticket can mark it as solved.');
             }
 
             if (!empty($ticket->assigned_to)) {
@@ -667,22 +731,14 @@ class TicketController extends Controller
 
         $previousStatus = (int) ($ticket->status ?? 0);
 
-        // Ensure the selected user is actually an Engineer (role 2)
+        // Ensure the selected user is eligible (Admin=1 or Engineer=2)
         $engineer = DB::table('users')
             ->where('id', $request->engineer_id)
-            ->where('role', 2) // role 2 = Engineer
+            ->whereIn('role', [1, 2])
             ->first();
 
         if (!$engineer) {
-            return back()->with('error', 'Selected user is not an Engineer.');
-        }
-
-        $mapped = DB::table('category_engineer_map')
-            ->where('category_id', (int) $ticket->category_id)
-            ->where('user_id', (int) $engineer->id)
-            ->exists();
-        if (!$mapped) {
-            return back()->with('error', 'That engineer is not mapped to this ticket\'s category.');
+            return back()->with('error', 'Selected user is not eligible for assignment.');
         }
 
         $noteText = trim((string) ($request->note ?? ''));
@@ -725,7 +781,7 @@ class TicketController extends Controller
 
     public function takeAction(Request $request, $id)
     {
-        // Only Admin and Engineer can take action (must be in category_engineer_map for this ticket's category)
+        // Only Admin and Engineer can take action.
         if (!in_array(auth()->user()->role, [1, 2])) {
             abort(403, 'Unauthorized');
         }
@@ -745,13 +801,18 @@ class TicketController extends Controller
             return back()->with('error', 'Ticket has no category.');
         }
 
-        // Must be assigned engineer for this category
-        $canWork = DB::table('category_engineer_map')
-            ->where('category_id', (int) $ticket->category_id)
-            ->where('user_id', (int) auth()->id())
-            ->exists();
-        if (!$canWork) {
-            abort(403, 'You are not assigned for this category.');
+        $role = (int) (auth()->user()->role ?? 0);
+
+        // Engineers must be mapped to the ticket category; admin can attend directly.
+        if ($role === 2) {
+            $canWork = DB::table('category_engineer_map')
+                ->where('category_id', (int) $ticket->category_id)
+                ->where('user_id', (int) auth()->id())
+                ->exists();
+            $isAssignedToSelf = (int) ($ticket->assigned_to ?? 0) === (int) auth()->id();
+            if (!$canWork && !$isAssignedToSelf) {
+                abort(403, 'You are not assigned for this category.');
+            }
         }
 
         if ($request->action === 'attend') {
@@ -793,13 +854,12 @@ class TicketController extends Controller
             return back()->with('error', 'Please select an engineer to forward to.');
         }
 
-        // forward_to must also be assigned for this category
-        $forwardToOk = DB::table('category_engineer_map')
-            ->where('category_id', (int) $ticket->category_id)
-            ->where('user_id', $forwardTo)
-            ->exists();
-        if (!$forwardToOk) {
-            return back()->with('error', 'Selected engineer is not assigned for this category.');
+        $forwardTarget = DB::table('users')->where('id', $forwardTo)->first();
+        if (!$forwardTarget || (int) $forwardTarget->role !== 2) {
+            return back()->with('error', 'You can only forward to a developer account.');
+        }
+        if ($forwardTo === (int) auth()->id()) {
+            return back()->with('error', 'Cannot forward to yourself.');
         }
 
         $note = trim((string) ($request->note ?? ''));
