@@ -12,15 +12,15 @@ use Illuminate\Http\UploadedFile;
 
 class TicketController extends Controller
 {
-    private function isUserMappedToCategory(int $userId, $categoryId): bool
+    private function isUserMappedToSubCategory(int $userId, $subCategoryId): bool
     {
-        $categoryId = (int) $categoryId;
-        if ($categoryId <= 0) {
+        $subCategoryId = (int) $subCategoryId;
+        if ($subCategoryId <= 0) {
             return false;
         }
 
-        return DB::table('category_engineer_map')
-            ->where('category_id', $categoryId)
+        return DB::table('sub_category_engineer_map')
+            ->where('sub_category_id', $subCategoryId)
             ->where('user_id', $userId)
             ->exists();
     }
@@ -75,15 +75,15 @@ class TicketController extends Controller
             }
         }
 
-        // Engineer (role 2): show tickets from mapped categories OR explicitly assigned tickets
+        // Engineer (role 2): show tickets from mapped sub-categories OR explicitly assigned tickets
         if ($role == 2) {
             $userId = auth()->id();
             $query->where(function ($scope) use ($userId) {
                 $scope->where('tickets.assigned_to', $userId)
                     ->orWhereExists(function ($q) use ($userId) {
-                        $q->from('category_engineer_map as cem')
-                            ->whereColumn('cem.category_id', 'tickets.category_id')
-                            ->where('cem.user_id', $userId);
+                        $q->from('sub_category_engineer_map as sem')
+                            ->whereColumn('sem.sub_category_id', 'tickets.sub_category_id')
+                            ->where('sem.user_id', $userId);
                     });
             });
 
@@ -92,13 +92,13 @@ class TicketController extends Controller
                 ->where('tickets.solved_by', $userId);
         }
 
-        // Admin (role 1): show only solved tickets from categories mapped to this admin
+        // Admin (role 1): show only solved tickets from sub-categories mapped to this admin
         if ($role == 1) {
             $query->where('tickets.status', 2)
                 ->whereExists(function ($q) {
-                    $q->from('category_engineer_map as cem')
-                        ->whereColumn('cem.category_id', 'tickets.category_id')
-                        ->where('cem.user_id', auth()->id());
+                    $q->from('sub_category_engineer_map as sem')
+                        ->whereColumn('sem.sub_category_id', 'tickets.sub_category_id')
+                        ->where('sem.user_id', auth()->id());
                 });
         }
 
@@ -135,11 +135,11 @@ class TicketController extends Controller
             )
             ->whereIn('tickets.status', [0, 1]);
 
-        // Admin can view only categories mapped to this admin
+        // Admin can view only sub-categories mapped to this admin
         $query->whereExists(function ($q) {
-            $q->from('category_engineer_map as cem')
-                ->whereColumn('cem.category_id', 'tickets.category_id')
-                ->where('cem.user_id', auth()->id());
+            $q->from('sub_category_engineer_map as sem')
+                ->whereColumn('sem.sub_category_id', 'tickets.sub_category_id')
+                ->where('sem.user_id', auth()->id());
         });
 
         if ($openTicketFilter === 'today') {
@@ -181,9 +181,9 @@ class TicketController extends Controller
             ->where(function ($scope) use ($userId) {
                 $scope->where('tickets.assigned_to', $userId)
                     ->orWhereExists(function ($q) use ($userId) {
-                        $q->from('category_engineer_map as cem')
-                            ->whereColumn('cem.category_id', 'tickets.category_id')
-                            ->where('cem.user_id', $userId);
+                        $q->from('sub_category_engineer_map as sem')
+                            ->whereColumn('sem.sub_category_id', 'tickets.sub_category_id')
+                            ->where('sem.user_id', $userId);
                     });
             })
             ->whereIn('tickets.status', [0, 1]);
@@ -207,10 +207,11 @@ class TicketController extends Controller
 
         $userId = auth()->id();
 
-        // Categories where this engineer is mapped
+        // Categories where this engineer has mapped sub-categories
         $categories = DB::table('categories as c')
-            ->join('category_engineer_map as cem', 'cem.category_id', '=', 'c.id')
-            ->where('cem.user_id', $userId)
+            ->join('sub_categories as sc', 'sc.category_id', '=', 'c.id')
+            ->join('sub_category_engineer_map as sem', 'sem.sub_category_id', '=', 'sc.id')
+            ->where('sem.user_id', $userId)
             ->select('c.id', 'c.name')
             ->distinct()
             ->orderBy('c.name')
@@ -239,9 +240,9 @@ class TicketController extends Controller
                 )
                 ->where('tickets.category_id', $selectedCategoryId)
                 ->whereExists(function ($q) use ($userId) {
-                    $q->from('category_engineer_map as cem')
-                        ->whereColumn('cem.category_id', 'tickets.category_id')
-                        ->where('cem.user_id', $userId);
+                    $q->from('sub_category_engineer_map as sem')
+                        ->whereColumn('sem.sub_category_id', 'tickets.sub_category_id')
+                        ->where('sem.user_id', $userId);
                 })
                 ->orderBy('tickets.created_at', 'desc')
                 ->get();
@@ -340,14 +341,14 @@ class TicketController extends Controller
                 $branchId = auth()->user()->branch_id;
             }
 
-            // ✅ Determine which engineers can see this ticket (category mapping)
-            if ($request->category_id) {
-                $categoryId = (int) $request->category_id;
+            // ✅ Determine which engineers can see this ticket (sub-category mapping)
+            if ($request->sub_category_id) {
+                $subCategoryId = (int) $request->sub_category_id;
 
-                // Prefer explicit per-category mapping table
-                $mappedEngineerIds = DB::table('category_engineer_map as cem')
-                    ->join('users as u', 'cem.user_id', '=', 'u.id')
-                    ->where('cem.category_id', $categoryId)
+                // Prefer explicit per-sub-category mapping table
+                $mappedEngineerIds = DB::table('sub_category_engineer_map as sem')
+                    ->join('users as u', 'sem.user_id', '=', 'u.id')
+                    ->where('sem.sub_category_id', $subCategoryId)
                     ->where('u.role', 2)
                     ->pluck('u.id')
                     ->all();
@@ -356,6 +357,7 @@ class TicketController extends Controller
                     $engineerIds = $mappedEngineerIds;
                 } else {
                     // Fallback: old assign_role_ids -> users.role_id mapping (engineers only)
+                    $categoryId = (int) ($request->category_id ?? 0);
                     $assignRoleIdsString = DB::table('categories')
                         ->where('id', $categoryId)
                         ->value('assign_role_ids');
@@ -428,11 +430,11 @@ class TicketController extends Controller
             abort(404);
         }
 
-        // Admin can open ticket details only for mapped categories.
+        // Admin can open ticket details only for mapped sub-categories.
         if ((int) (auth()->user()->role ?? 0) === 1) {
-            $canView = $this->isUserMappedToCategory((int) auth()->id(), $ticket->category_id ?? null);
+            $canView = $this->isUserMappedToSubCategory((int) auth()->id(), $ticket->sub_category_id ?? null);
             if (!$canView) {
-                abort(403, 'You are not mapped for this ticket category.');
+                abort(403, 'You are not mapped for this ticket sub-category.');
             }
         }
 
@@ -442,15 +444,15 @@ class TicketController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
 
-        // Category-mapped engineers only (for Forward / rotation); excludes admins mistakenly in map
+        // Sub-category-mapped engineers only (for Forward / rotation); excludes admins mistakenly in map
         $categoryEngineers = collect();
         $categoryMappedEngineers = collect();
         $isEngineerForCategory = false;
         $nextEngineer = null;
-        if (!empty($ticket->category_id)) {
-            $categoryEngineers = DB::table('category_engineer_map as cem')
-                ->join('users as u', 'cem.user_id', '=', 'u.id')
-                ->where('cem.category_id', (int) $ticket->category_id)
+        if (!empty($ticket->sub_category_id)) {
+            $categoryEngineers = DB::table('sub_category_engineer_map as sem')
+                ->join('users as u', 'sem.user_id', '=', 'u.id')
+                ->where('sem.sub_category_id', (int) $ticket->sub_category_id)
                 ->where('u.role', 2)
                 ->orderBy('u.name')
                 ->get(['u.id', 'u.name']);
@@ -482,8 +484,8 @@ class TicketController extends Controller
             }
 
             if (auth()->check() && in_array(auth()->user()->role, [1, 2])) {
-                $isEngineerForCategory = DB::table('category_engineer_map')
-                    ->where('category_id', (int) $ticket->category_id)
+                $isEngineerForCategory = DB::table('sub_category_engineer_map')
+                    ->where('sub_category_id', (int) $ticket->sub_category_id)
                     ->where('user_id', (int) auth()->id())
                     ->exists();
             }
@@ -722,8 +724,8 @@ class TicketController extends Controller
         if (!$ticket) {
             abort(404);
         }
-        if (empty($ticket->category_id)) {
-            return back()->with('error', 'This ticket has no category; assign an engineer after setting a category.');
+        if (empty($ticket->sub_category_id)) {
+            return back()->with('error', 'This ticket has no sub-category; assign an engineer after setting a sub-category.');
         }
         if ((int) $ticket->status === 2) {
             return back()->with('error', 'Cannot reassign a solved ticket.');
@@ -797,21 +799,21 @@ class TicketController extends Controller
             abort(404);
         }
 
-        if (empty($ticket->category_id)) {
-            return back()->with('error', 'Ticket has no category.');
+        if (empty($ticket->sub_category_id)) {
+            return back()->with('error', 'Ticket has no sub-category.');
         }
 
         $role = (int) (auth()->user()->role ?? 0);
 
-        // Engineers must be mapped to the ticket category; admin can attend directly.
+        // Engineers must be mapped to the ticket sub-category; admin can attend directly.
         if ($role === 2) {
-            $canWork = DB::table('category_engineer_map')
-                ->where('category_id', (int) $ticket->category_id)
+            $canWork = DB::table('sub_category_engineer_map')
+                ->where('sub_category_id', (int) $ticket->sub_category_id)
                 ->where('user_id', (int) auth()->id())
                 ->exists();
             $isAssignedToSelf = (int) ($ticket->assigned_to ?? 0) === (int) auth()->id();
             if (!$canWork && !$isAssignedToSelf) {
-                abort(403, 'You are not assigned for this category.');
+                abort(403, 'You are not assigned for this sub-category.');
             }
         }
 

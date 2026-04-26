@@ -3,17 +3,18 @@
 @section('content')
 <div class="mb-3">
     <a href="{{ route('config.engineer_mapping') }}" class="btn btn-outline-secondary btn-sm">
-        <i class="fas fa-arrow-left me-1"></i> Back to categories
+        <i class="fas fa-arrow-left me-1"></i> Back to sub-categories
     </a>
 </div>
 
 <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
-    <h2 class="mb-0">{{ $category->name }}</h2>
-    @if($categoryRoleId !== null)
-        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addEngineerModal">
-            <i class="fas fa-plus me-1"></i> Add Engineer
-        </button>
-    @endif
+    <div>
+        <h2 class="mb-0">{{ $subCategory->name }}</h2>
+        <div class="small text-muted mt-1">Category: {{ $subCategory->category_name ?? 'N/A' }}</div>
+    </div>
+    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addEngineerModal">
+        <i class="fas fa-plus me-1"></i> Add Engineer
+    </button>
 </div>
 
 @if(session('success'))
@@ -29,9 +30,6 @@
 </div>
 @endif
 
-@if($categoryRoleId === null)
-<div class="alert alert-warning">This category has no assign_role_ids. Set it in Manage Categories (e.g. 1 for Software, 2 for Hardware).</div>
-@else
 <div class="mb-3">
     <strong>Assigned Engineers:</strong>
     <div class="table-responsive mt-2">
@@ -52,7 +50,7 @@
                             <td>{{ $ae->name }}</td>
                             <td>{{ $ae->role_name ?? $ae->role }}</td>
                             <td class="text-center">
-                                <form method="POST" action="{{ route('config.engineer_mapping.remove_engineer', $category->id) }}" class="d-inline">
+                                <form method="POST" action="{{ route('config.engineer_mapping.remove_engineer', $subCategory->id) }}" class="d-inline">
                                     @csrf
                                     <input type="hidden" name="user_id" value="{{ $ae->id }}">
                                     <button type="submit" class="btn btn-danger btn-sm" title="Remove">
@@ -71,17 +69,15 @@
         </table>
     </div>
 </div>
-@endif
 
-@if($categoryRoleId !== null)
 <!-- Add Engineer Modal -->
 <div class="modal fade" id="addEngineerModal" tabindex="-1" aria-labelledby="addEngineerModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="POST" action="{{ route('config.engineer_mapping.add_engineer', $category->id) }}">
+            <form method="POST" action="{{ route('config.engineer_mapping.add_engineer', $subCategory->id) }}">
                 @csrf
                 <div class="modal-header">
-                    <h5 class="modal-title" id="addEngineerModalLabel">Add Engineer to {{ $category->name }}</h5>
+                    <h5 class="modal-title" id="addEngineerModalLabel">Add Engineer to {{ $subCategory->name }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
@@ -93,7 +89,7 @@
                         @endforeach
                     </select>
                     <small class="text-muted d-block mt-2">
-                        Only role=1 users are listed.
+                        Only Support users (role = 1) are listed.
                     </small>
                 </div>
                 <div class="modal-footer">
@@ -104,5 +100,4 @@
         </div>
     </div>
 </div>
-@endif
 @endsection

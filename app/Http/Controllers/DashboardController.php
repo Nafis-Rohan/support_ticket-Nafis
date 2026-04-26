@@ -17,11 +17,12 @@ class DashboardController extends Controller
         // Categories shown in the dashboard top cards
         $categoriesQuery = DB::table('categories')->select('id', 'name');
 
-        // Engineers: show only mapped categories
+        // Engineers: show only categories that contain mapped sub-categories
         if ($role == 2) {
             $categoriesQuery = DB::table('categories as c')
-                ->join('category_engineer_map as cem', 'cem.category_id', '=', 'c.id')
-                ->where('cem.user_id', $userId)
+                ->join('sub_categories as sc', 'sc.category_id', '=', 'c.id')
+                ->join('sub_category_engineer_map as sem', 'sem.sub_category_id', '=', 'sc.id')
+                ->where('sem.user_id', $userId)
                 ->select('c.id', 'c.name')
                 ->distinct()
                 ->orderBy('c.name');
@@ -106,9 +107,9 @@ class DashboardController extends Controller
             ->where(function ($scope) use ($userId) {
                 $scope->where('t.assigned_to', $userId)
                     ->orWhereExists(function ($q2) use ($userId) {
-                        $q2->from('category_engineer_map as cem')
-                            ->whereColumn('cem.category_id', 't.category_id')
-                            ->where('cem.user_id', $userId);
+                        $q2->from('sub_category_engineer_map as sem')
+                            ->whereColumn('sem.sub_category_id', 't.sub_category_id')
+                            ->where('sem.user_id', $userId);
                     });
             })
             ->whereIn('t.status', [0, 1])
@@ -148,9 +149,9 @@ class DashboardController extends Controller
             ->where(function ($scope) use ($userId) {
                 $scope->where('t.assigned_to', $userId)
                     ->orWhereExists(function ($q) use ($userId) {
-                        $q->from('category_engineer_map as cem')
-                            ->whereColumn('cem.category_id', 't.category_id')
-                            ->where('cem.user_id', $userId);
+                        $q->from('sub_category_engineer_map as sem')
+                            ->whereColumn('sem.sub_category_id', 't.sub_category_id')
+                            ->where('sem.user_id', $userId);
                     });
             });
 
@@ -166,9 +167,9 @@ class DashboardController extends Controller
             ->where(function ($scope) use ($userId) {
                 $scope->where('t.assigned_to', $userId)
                     ->orWhereExists(function ($q) use ($userId) {
-                        $q->from('category_engineer_map as cem')
-                            ->whereColumn('cem.category_id', 't.category_id')
-                            ->where('cem.user_id', $userId);
+                        $q->from('sub_category_engineer_map as sem')
+                            ->whereColumn('sem.sub_category_id', 't.sub_category_id')
+                            ->where('sem.user_id', $userId);
                     });
             })
             ->where('t.solved_by', $userId)
